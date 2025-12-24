@@ -8,6 +8,7 @@ library(bslib)
 library(TTR)
 library(plotly)
 library(quantmod) 
+library(scales) # Loaded for formatting helpers
 
 # --- 1. DATA CONFIGURATION ---
 
@@ -120,19 +121,14 @@ theme_choices <- list(
 
 # --- 2. UI ---
 ui <- page_sidebar(
-  # --- HEAD SECTION: ICONS & SOCIAL TAGS ---
   header = tags$head(
-    # Browser Tab Icon (Pointing to your PNG)
     tags$link(rel = "icon", type = "image/png", href = "logo.png"),
-    
-    # Social Media Preview Tags
     tags$meta(property = "og:title", content = "Sector Momentum Tracker"),
     tags$meta(property = "og:description", content = "Real-time GICS & Thematic market analysis."),
     tags$meta(property = "og:image", content = "logo.png"),
     tags$meta(property = "og:image:width", content = "512"),
     tags$meta(property = "og:image:height", content = "512")
   ),
-  
   title = "Sector Momentum Tracker",
   theme = bs_theme(version = 5, bootswatch = "zephyr", primary = "#2c3e50"),
   fillable = FALSE, 
@@ -164,51 +160,24 @@ ui <- page_sidebar(
     
     hr(),
     actionButton("refresh", "Refresh Data", class = "btn-primary w-100"),
-    div(style="margin-top: 15px;", downloadButton("downloadData", "Export CSV", class = "btn-sm w-100"))
+    div(style="margin-top: 15px;", downloadButton("downloadData", "Export to Excel (CSV)", class = "btn-sm w-100"))
   ),
   
-  # --- 4 MAIN TABS ---
   navset_tab(
     id = "main_tabs",
-    
-    # TAB 1: GICS MACRO
     nav_panel("Macro (GICS)",
-              card(
-                min_height = "500px",
-                card_header("Standard Sector Momentum (GICS)"),
-                plotlyOutput("plotGICS", height = "500px") 
-              ),
+              card(min_height = "500px", card_header("Standard Sector Momentum (GICS)"), plotlyOutput("plotGICS", height = "500px")),
               card(card_header("Sector Rankings"), reactableOutput("tableGICS"))
     ),
-    
-    # TAB 2: GICS DEEP DIVE
     nav_panel("Deep Dive (GICS)",
-              card(
-                min_height = "800px",
-                card_header(textOutput("headerGICS")),
-                uiOutput("boxesGICS"),
-                reactableOutput("stockTableGICS")
-              )
+              card(min_height = "800px", card_header(textOutput("headerGICS")), uiOutput("boxesGICS"), reactableOutput("stockTableGICS"))
     ),
-    
-    # TAB 3: THEME MACRO
     nav_panel("Macro (Themes)",
-              card(
-                min_height = "500px",
-                card_header("Thematic Engine Momentum"),
-                plotlyOutput("plotThemes", height = "500px")
-              ),
+              card(min_height = "500px", card_header("Thematic Engine Momentum"), plotlyOutput("plotThemes", height = "500px")),
               card(card_header("Theme Rankings"), reactableOutput("tableThemes"))
     ),
-    
-    # TAB 4: THEME DEEP DIVE
     nav_panel("Deep Dive (Themes)",
-              card(
-                min_height = "800px",
-                card_header(textOutput("headerThemes")),
-                uiOutput("boxesThemes"),
-                reactableOutput("stockTableThemes") 
-              )
+              card(min_height = "800px", card_header(textOutput("headerThemes")), uiOutput("boxesThemes"), reactableOutput("stockTableThemes"))
     )
   )
 )
@@ -220,9 +189,7 @@ safe_get_data <- function(tickers, from_date) {
     df <- tq_get(tickers, from = from_date)
     if (is.null(df) || nrow(df) == 0) return(NULL)
     df
-  }, error = function(e) {
-    NULL
-  })
+  }, error = function(e) { NULL })
 }
 
 fetch_stock_data <- function(tickers) {
@@ -230,13 +197,10 @@ fetch_stock_data <- function(tickers) {
   df_raw <- safe_get_data(tickers, start_date)
   if (is.null(df_raw)) return(NULL)
   
-  # FETCH REAL MCAP DYNAMICALLY
   mcap_info <- tryCatch({
     quotes <- getQuote(tickers, what = yahooQF("Market Capitalization"))
     data.frame(symbol = rownames(quotes), Mcap_Raw = quotes$`Market Capitalization`)
-  }, error = function(e) {
-    data.frame(symbol = tickers, Mcap_Raw = 0)
-  })
+  }, error = function(e) { data.frame(symbol = tickers, Mcap_Raw = 0) })
   
   date_1m <- Sys.Date() - 30
   date_3m <- Sys.Date() - 90
@@ -257,10 +221,9 @@ fetch_stock_data <- function(tickers) {
     ) %>%
     na.omit()
   
-  # Join with Mcap info
   if(!is.null(mcap_info)) {
     metrics <- left_join(metrics, mcap_info, by = "symbol") %>%
-      mutate(Mcap_B = Mcap_Raw / 1e9) # Convert to Billions
+      mutate(Mcap_B = Mcap_Raw / 1e9) 
   } else {
     metrics$Mcap_B <- 0
   }
@@ -301,9 +264,7 @@ make_value_boxes <- function(df) {
 }
 
 render_stock_table <- function(df) {
-  if (is.null(df)) {
-    return(reactable(data.frame(Message = "No data available")))
-  }
+  if (is.null(df)) return(reactable(data.frame(Message = "No data available")))
   
   color_fmt <- function(val) { if (is.na(val)) "black" else if (val > 0) "#008000" else "#e00000" }
   mcap_fmt <- function(val) { if (val >= 1000) paste0("$", round(val / 1000, 1), "T") else paste0("$", round(val, 0), "B") }
@@ -339,15 +300,11 @@ render_stock_table <- function(df) {
 # --- 3. SERVER ---
 server <- function(input, output, session) {
   
-  # --- MACRO LOGIC ---
   data_gics_macro <- eventReactive(input$refresh, {
     req(input$dates)
     df <- safe_get_data(c(names(gics_map)[1:9], "SPY"), input$dates[1])
     if(is.null(df)) return(NULL)
-    
-    df %>%
-      group_by(symbol) %>%
-      filter(!is.na(adjusted)) %>%
+    df %>% group_by(symbol) %>% filter(!is.na(adjusted)) %>%
       mutate(cum_ret = (adjusted / first(adjusted)) - 1, 
              label = gics_map[symbol],
              style_group = ifelse(symbol == "SPY", "SPY", "Sector"))
@@ -358,20 +315,12 @@ server <- function(input, output, session) {
     req(df)
     visible <- c(input$gics_visible, "SPY")
     plot_df <- df %>% filter(symbol %in% visible)
-    
-    p <- ggplot(plot_df, aes(x = date, y = cum_ret, 
-                             color = label, group = label,
-                             linewidth = style_group, linetype = style_group,
+    p <- ggplot(plot_df, aes(x = date, y = cum_ret, color = label, group = label, linewidth = style_group, linetype = style_group,
                              text = paste0("Date: ", date, "\nSector: ", label, "\nReturn: ", scales::percent(cum_ret, accuracy = 0.1)))) +
-      geom_line() +
-      scale_linewidth_manual(values = c("SPY" = 2.5, "Sector" = 1.5), guide = "none") +
+      geom_line() + scale_linewidth_manual(values = c("SPY" = 2.5, "Sector" = 1.5), guide = "none") +
       scale_linetype_manual(values = c("SPY" = "dashed", "Sector" = "solid"), guide = "none") +
-      scale_y_continuous(labels = scales::percent) +
-      labs(y = "Return", x = NULL, color = "Sector") +
-      theme_minimal(base_size = 14)
-    
-    ggplotly(p, tooltip = "text") %>% 
-      layout(legend = list(orientation = "h", x = 0.1, y = -0.3, font = list(size = 14)))
+      scale_y_continuous(labels = scales::percent) + labs(y = "Return", x = NULL, color = "Sector") + theme_minimal(base_size = 14)
+    ggplotly(p, tooltip = "text") %>% layout(legend = list(orientation = "h", x = 0.1, y = -0.3))
   })
   
   output$tableGICS <- renderReactable({
@@ -381,59 +330,30 @@ server <- function(input, output, session) {
     reactable(r, striped = TRUE, columns = list(Return = colDef(format = colFormat(percent = TRUE, digits = 1))))
   })
   
-  # --- DEEP DIVE LOGIC ---
   output$headerGICS <- renderText({ paste("Deep Dive: ", gics_map[input$gics_active]) })
+  data_gics_deep <- reactive({ req(input$gics_active); fetch_stock_data(gics_list[[input$gics_active]]) })
+  output$boxesGICS <- renderUI({ df <- data_gics_deep(); req(df); make_value_boxes(df) })
+  output$stockTableGICS <- renderReactable({ df <- data_gics_deep(); req(df); render_stock_table(df) })
   
-  data_gics_deep <- reactive({
-    req(input$gics_active)
-    fetch_stock_data(gics_list[[input$gics_active]])
-  })
-  
-  output$boxesGICS <- renderUI({
-    df <- data_gics_deep()
-    req(df)
-    make_value_boxes(df)
-  })
-  
-  output$stockTableGICS <- renderReactable({
-    df <- data_gics_deep()
-    req(df)
-    render_stock_table(df)
-  })
-  
-  # --- THEME LOGIC ---
   data_theme_macro <- eventReactive(input$refresh, {
     req(input$dates)
     selected_long <- c(input$theme_visible, "SPY")
     clean_tickers <- sub("\\s.*", "", selected_long)
-    
     df <- safe_get_data(clean_tickers, input$dates[1])
     if(is.null(df)) return(NULL)
-    
-    df %>%
-      group_by(symbol) %>%
-      filter(!is.na(adjusted)) %>%
-      mutate(cum_ret = (adjusted / first(adjusted)) - 1,
-             style_group = ifelse(symbol == "SPY", "SPY", "Theme")) 
+    df %>% group_by(symbol) %>% filter(!is.na(adjusted)) %>%
+      mutate(cum_ret = (adjusted / first(adjusted)) - 1, style_group = ifelse(symbol == "SPY", "SPY", "Theme")) 
   }, ignoreNULL = TRUE)
   
   output$plotThemes <- renderPlotly({
     df <- data_theme_macro()
     req(df)
-    
-    p <- ggplot(df, aes(x = date, y = cum_ret, 
-                        color = symbol, group = symbol,
-                        linewidth = style_group, linetype = style_group,
+    p <- ggplot(df, aes(x = date, y = cum_ret, color = symbol, group = symbol, linewidth = style_group, linetype = style_group,
                         text = paste0("Date: ", date, "\nTheme: ", symbol, "\nReturn: ", scales::percent(cum_ret, accuracy = 0.1)))) +
-      geom_line() +
-      scale_linewidth_manual(values = c("SPY" = 2.5, "Theme" = 1.5), guide = "none") +
+      geom_line() + scale_linewidth_manual(values = c("SPY" = 2.5, "Theme" = 1.5), guide = "none") +
       scale_linetype_manual(values = c("SPY" = "dashed", "Theme" = "solid"), guide = "none") +
-      scale_y_continuous(labels = scales::percent) +
-      labs(y = "Return", x = NULL, color = "Theme") +
-      theme_minimal(base_size = 14)
-    
-    ggplotly(p, tooltip = "text") %>% 
-      layout(legend = list(orientation = "h", x = 0.1, y = -0.3, font = list(size = 14)))
+      scale_y_continuous(labels = scales::percent) + labs(y = "Return", x = NULL, color = "Theme") + theme_minimal(base_size = 14)
+    ggplotly(p, tooltip = "text") %>% layout(legend = list(orientation = "h", x = 0.1, y = -0.3))
   })
   
   output$tableThemes <- renderReactable({
@@ -444,27 +364,49 @@ server <- function(input, output, session) {
   })
   
   output$headerThemes <- renderText({ paste("Deep Dive: ", input$theme_active) })
+  data_theme_deep <- reactive({ req(input$theme_active); fetch_stock_data(theme_list[[input$theme_active]]) })
+  output$boxesThemes <- renderUI({ df <- data_theme_deep(); req(df); make_value_boxes(df) })
+  output$stockTableThemes <- renderReactable({ df <- data_theme_deep(); req(df); render_stock_table(df) })
   
-  data_theme_deep <- reactive({
-    req(input$theme_active)
-    fetch_stock_data(theme_list[[input$theme_active]])
-  })
-  
-  output$boxesThemes <- renderUI({
-    df <- data_theme_deep()
-    req(df)
-    make_value_boxes(df)
-  })
-  
-  output$stockTableThemes <- renderReactable({
-    df <- data_theme_deep()
-    req(df)
-    render_stock_table(df)
-  })
-  
+  # --- EXPORT HANDLER WITH FORMATTING ---
   output$downloadData <- downloadHandler(
-    filename = function() { "sector_data.csv" },
-    content = function(file) { write.csv(data.frame(Note="Export feature active"), file) } 
+    filename = function() { 
+      paste0("Sector_Momentum_Export_", Sys.Date(), ".csv") 
+    },
+    content = function(file) {
+      # Determine which data to export
+      data_to_export <- if (grepl("Themes", input$main_tabs)) data_theme_deep() else data_gics_deep()
+      
+      if(is.null(data_to_export)) {
+        write.csv(data.frame(Error = "No data loaded yet. Click Refresh Data."), file, row.names = FALSE)
+      } else {
+        # FORMATTING LOGIC FOR CLEAN EXCEL VIEW
+        formatted_df <- data_to_export %>%
+          mutate(
+            # Smart Truncate Market Cap (T, B, M)
+            Mcap = case_when(
+              Mcap_B >= 1000 ~ paste0("$", round(Mcap_B/1000, 2), "T"),
+              Mcap_B >= 1    ~ paste0("$", round(Mcap_B, 2), "B"),
+              TRUE           ~ paste0("$", round(Mcap_B*1000, 0), "M")
+            ),
+            # Price with Dollar Sign
+            Price = scales::dollar(Price, accuracy = 0.01),
+            # Percentages
+            `1M` = scales::percent(`1M`, accuracy = 0.1),
+            `3M` = scales::percent(`3M`, accuracy = 0.1),
+            `6M` = scales::percent(`6M`, accuracy = 0.1),
+            `1Y` = scales::percent(`1Y`, accuracy = 0.1),
+            `Vol` = scales::percent(`Vol`, accuracy = 0.1),
+            # RSI as integer
+            `RSI` = round(`RSI`, 0)
+          ) %>%
+          # Swap raw Mcap_B for formatted Mcap
+          select(-Mcap_B) %>%
+          relocate(Mcap, .after = symbol)
+        
+        write.csv(formatted_df, file, row.names = FALSE)
+      }
+    }
   )
 }
 
