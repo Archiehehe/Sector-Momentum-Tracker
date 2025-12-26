@@ -1,135 +1,154 @@
 # Sector Momentum Tracker
 
-Launch Live Dashboard: https://archiehehe.shinyapps.io/SectorMomentumTracker/ 
+**Live Dashboard:** https://archiehehe.shinyapps.io/SectorMomentumTracker/  
+**Repository:** https://github.com/Archiehehe/Sector-Momentum-Tracker
 
-Overview
+---
 
-The Sector Momentum Tracker is a financial intelligence dashboard designed to visualize Sector Rotation in real-time.
+## Overview
 
-Moving beyond standard GICS classifications, this application leverages a custom Thematic Engine and various countries to track unique, high-beta market baskets—such as Uranium, Cybersecurity, and Regional Banks—that traditional screeners often miss. It automates the ingestion of financial data to compute technical metrics and visualize capital flow through interactive charts.
+The **Sector Momentum Tracker** is a production-grade R Shiny application designed to analyze and visualize **equity market momentum across global regions, GICS sectors, and investment themes**.
 
+The application integrates:
+- **48 country and regional equity ETFs**
+- **GICS sector classifications**
+- **59 investment themes**
+- Stock-level constituent analysis
 
-# Sector Momentum Tracker
+It provides a structured, top-down framework for understanding **global capital rotation**, relative strength, and market regimes. The app is designed as a **research and decision-support tool**, not a signal-generating or trading system.
 
-Sector Momentum Tracker is a production-grade R Shiny application designed to analyze and visualize equity market momentum across GICS sectors, investment themes, and global regions. The application combines multi-horizon return analysis, technical indicators, and market-cap-aware ranking to provide an interactive tool for both macro-level analysis and detailed stock-level exploration.
-
-**Live Application:** https://archiehehe.shinyapps.io/SectorMomentumTracker/
+---
 
 ## Motivation
 
-Momentum is one of the most robust and widely studied factors in asset pricing and portfolio management. Understanding how momentum evolves across sectors, themes, and regions is critical for investors, researchers, and analysts.
+Momentum is one of the most robust and persistent effects documented in asset pricing and portfolio management. However, most tools analyze momentum in isolation—by country, sector, or theme.
 
-This tool aims to bridge academic momentum concepts with a practical, interactive analytics system that enables users to:
+This project integrates all three dimensions into a **single analytical framework**, allowing users to answer questions such as:
 
-* Identify leading and lagging market segments
-* Explore cross-sectional and relative performance
-* Perform structured deep dives into individual securities
+- Which **countries or regions** are leading or lagging globally?
+- Are sector trends **global or region-specific**?
+- Which **themes** are gaining momentum within strong sectors?
+- Which **stocks** are driving performance within a theme or region?
 
+---
 
 ## Key Features
 
 ### 1. Macro-Level Momentum Analysis
 
-* Cumulative return comparison across:
+Interactive cumulative return comparisons across:
+- **48 global country and regional ETFs**
+- **GICS sectors**
+- **59 investment themes**
+- Benchmark comparison against the S&P 500
 
-  * GICS sectors
-  * Investment themes
-  * Global equity regions
-* Interactive time-series visualization with benchmark comparison (S&P 500)
+Users can dynamically select assets and time ranges to evaluate relative performance.
+
+---
 
 ### 2. Deep-Dive Stock Analysis
 
-* Stock-level breakdown within selected sectors, themes, or regions
-* Automatic ranking by market capitalization
-* Summary indicators highlighting top performers, laggards, and group averages
+Stock-level breakdowns within selected:
+- Countries / regions
+- Sectors
+- Investment themes
+
+Includes:
+- Automatic ranking by market capitalization
+- Identification of top performers and laggards
+- Group-level average performance indicators
+
+---
 
 ### 3. Momentum & Risk Metrics
 
-For each stock, the following metrics are computed:
+For each security, the app computes:
 
-* 1-month, 3-month, 6-month, and 1-year returns
-* Annualized volatility
-* Relative Strength Index (RSI)
-* Latest adjusted price with currency normalization
+- 1-month, 3-month, 6-month, and 1-year returns
+- Annualized volatility
+- Relative Strength Index (RSI, 14-period)
+- Latest adjusted price with currency-aware formatting
 
-### 4. Interactive Data Tables
+Metrics are **descriptive and comparative**, intended to support analysis rather than prediction.
 
-* Sortable and filterable tables using `reactable`
-* Conditional formatting for performance metrics
-* Export functionality for further offline analysis
+---
+
+### 4. Interactive Tables & Visualizations
+
+- Interactive time-series charts using `ggplot2` and `plotly`
+- Sortable and filterable tables via `reactable`
+- Conditional formatting for returns and momentum indicators
+- CSV export functionality for offline analysis
+
+---
 
 ### 5. Robust Data Handling
 
-* Safe and fault-tolerant data retrieval from Yahoo Finance
-* Graceful handling of missing data and API failures
-* Market capitalization normalization across different formats and currencies
+- Market data sourced via Yahoo Finance using `tidyquant` and `quantmod`
+- Defensive data retrieval with graceful handling of missing or failed API responses
+- Normalized market capitalization data for consistent ranking
+- Reactive pipelines designed to minimize unnecessary recomputation
+
+---
 
 ## Methodology
 
 ### Momentum Definition
 
-Momentum is defined as cumulative returns over multiple lookback horizons (1M, 3M, 6M, 1Y), calculated using adjusted closing prices. These horizons capture both short-term and medium-term market trends.
+Momentum is defined using cumulative returns over multiple lookback horizons (1M, 3M, 6M, 1Y), calculated from adjusted closing prices. These horizons capture short- and medium-term trends and enable cross-asset comparability.
 
-### Key Indicators
+### Risk Indicators
 
-* **RSI** is used to identify overbought and oversold conditions.
-* **Volatility** is calculated as the annualized standard deviation of daily log returns.
+- **Volatility** is calculated as the annualized standard deviation of daily log returns.
+- **RSI** is used to highlight potential overbought or oversold conditions.
 
-### Data Sources
+---
 
-* Historical price data is retrieved via Yahoo Finance using `tidyquant` and `quantmod`.
-* Market capitalization data is fetched as a snapshot and normalized to numeric values.
+## Application Structure
 
-## Application Architecture
+The application follows a modular Shiny architecture:
 
-The application is built using a modular Shiny design:
+- **UI Layer:** Navigation, layout, and controls built with `bslib`
+- **Server Layer:** Reactive data pipelines, metric computation, and rendering logic
+- **Helper Functions:** Data cleaning, metric calculation, and error handling
 
-* **UI Layer:** User controls, navigation, and interactive layouts using `bslib`
-* **Server Layer:** Reactive data pipelines, metric computation, and rendering logic
-* **Helper Functions:** Data cleaning, error handling, and metric calculation utilities
+A consistent **Macro → Deep Dive** pattern is used across countries, sectors, and themes.
 
-Reactive expressions are used to optimize performance and prevent unnecessary recomputation.
+---
 
 ## Technology Stack
 
-* R
-* Shiny / bslib
-* tidyquant
-* quantmod
-* dplyr / tidyr
-* ggplot2 / plotly
-* reactable
+- R
+- Shiny / bslib
+- tidyquant
+- quantmod
+- dplyr / tidyr
+- ggplot2 / plotly
+- reactable
+- TTR
+- scales
 
-How to Run Locally
+
+
+---
+Use Cases
+
+Global macro and asset allocation research
+
+Sector and thematic rotation analysis
+
+Cross-country relative strength comparison
+
+Portfolio context and regime assessment
+
+Educational exploration of market structure and capital flows
+
+Author - Archie (archie.nadkarni@gmail.com) 
+Not for Commercial Use. Read the License for details.
+
+## How to Run Locally
 
 1. Clone the repository:
-git clone [https://github.com/archiehehe/Sector-Momentum-Tracker.git]
-3. Install dependencies:
-install.packages(c("shiny", "tidyquant", "dplyr", "ggplot2", "tidyr", "reactable", "bslib", "plotly", "quantmod"))
-4. Run the App:
-Click the Run App button in the top right of the RStudio script editor.
+```bash
+git clone https://github.com/Archiehehe/Sector-Momentum-Tracker.git
 
-## Deployment
-
-The application is deployed on `shinyapps.io` - https://archiehehe.shinyapps.io/SectorMomentumTracker/
-
-To run locally:
-
-```r
-install.packages(c(
-  "shiny", "tidyquant", "quantmod", "dplyr", "tidyr",
-  "ggplot2", "plotly", "reactable", "bslib", "TTR", "scales"
-))
-
-shiny::runApp()
-```
-
-## Use Cases
-* Exploratory market analysis
-* Portfolio monitoring and sector rotation screening across sectors, themes, and countries
-
-## Author
-**Archie**
-
-Not for commercial use. Read the license for further details.
-.
