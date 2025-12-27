@@ -11,11 +11,20 @@ library(quantmod)
 library(scales)
 library(shinycssloaders)
 library(zoo)
+library(bsicons)
+library(memoise) 
+library(htmltools)
+library(lubridate)
 
 # ==============================================================================
-# 1. HELPER FUNCTIONS
+# 1. HELPER FUNCTIONS & CACHING
 # ==============================================================================
 
+# -- CACHING SETUP --
+# Caches data for 60 seconds to prevent API bans while switching tabs
+memo_tq_get <- memoise::memoise(tidyquant::tq_get, cache = cachem::cache_mem(max_age = 60))
+
+# -- CURRENCY SYMBOLS --
 get_currency_symbol <- function(ticker) {
   if (grepl("\\.T$", ticker)) return("¥") 
   if (grepl("\\.HK$", ticker)) return("HK$")
@@ -24,14 +33,15 @@ get_currency_symbol <- function(ticker) {
   if (grepl("\\.KS$", ticker)) return("₩")
   if (grepl("\\.TW$", ticker)) return("NT$")
   if (grepl("\\.NS$|\\.BO$", ticker)) return("₹")
-  if (grepl("\\.SA$", ticker)) return("R$") # Brazil
-  if (grepl("\\.JO$|\\.ZA$", ticker)) return("R")  # South Africa
-  if (grepl("\\.SR$", ticker)) return("﷼")  # Saudi
+  if (grepl("\\.SA$", ticker)) return("R$") 
+  if (grepl("\\.JO$|\\.ZA$", ticker)) return("R")  
+  if (grepl("\\.SR$", ticker)) return("﷼")  
   if (grepl("\\.TO$", ticker)) return("C$")
   if (grepl("\\.MX$", ticker)) return("Mex$")
   return("$")
 }
 
+# -- MCAP CLEANER --
 clean_mcap <- function(x) {
   if (is.null(x) || length(x) == 0 || is.na(x) || x == "N/A" || x == "") return(0)
   if (is.numeric(x)) return(x)
@@ -45,21 +55,23 @@ clean_mcap <- function(x) {
 }
 
 # ==============================================================================
-# 2. MASTER DATA: THEMES (EXHAUSTIVE & CATEGORIZED)
+# 2. MASTER DATA (FULL ROSTERS)
 # ==============================================================================
 
 THEME_DATABASE <- list(
-  # --- 1. COMMODITIES & HARD ASSETS ---
+  # --- 1. COMMODITIES ---
   list(group="Commodities", label="Copper Miners (COPX)", ticker="COPX", holdings=c("FCX", "SCCO", "TECK", "HBM", "ERO", "BHP", "RIO", "IVN.TO", "TRQ", "LUN.TO", "FM.TO", "CMMC.TO", "ALS.TO", "CS.TO")),
   list(group="Commodities", label="Gold Miners (GDX)", ticker="GDX", holdings=c("NEM", "GOLD", "AEM", "WPM", "KGC", "AU", "GFI", "RGLD", "IAG", "NG", "BTG", "EQX", "PAAS", "SSRM", "AG", "CDE", "HL", "EXK")),
+  list(group="Commodities", label="Silver Miners (SIL)", ticker="SIL", holdings=c("PAAS", "HL", "AG", "CDE", "MAG", "SVM", "EXK", "FSM", "WPM")),
   list(group="Commodities", label="Lithium & Battery (LIT)", ticker="LIT", holdings=c("ALB", "SQM", "TSLA", "BYDDF", "LAC", "PILBF", "LTHM", "GANX", "SGML", "PLL", "MIN.AX", "AKE.AX", "PLS.AX", "LTR.AX")),
   list(group="Commodities", label="Agribusiness (MOO)", ticker="MOO", holdings=c("DE", "CTVA", "NTR", "ADM", "TSN", "BG", "MOS", "FMC", "AGCO", "CNHI", "ANDE", "CALM", "CF", "ICL", "YARA.OL")),
   list(group="Commodities", label="Timber & Forestry (WOOD)", ticker="WOOD", holdings=c("WY", "RFP", "CTT", "PCH", "RYN", "LPX", "WFG", "IP", "WRK", "PKG", "SON", "SEE", "SCA-B.ST", "HOLM-B.ST")),
   list(group="Commodities", label="Rare Earths (REMX)", ticker="REMX", holdings=c("MP", "LYSDY", "ILUKA.AX", "LAC", "PLL", "TROX", "ARE", "Lynas", "ASM.AX")),
   list(group="Commodities", label="Steel (SLX)", ticker="SLX", holdings=c("NUE", "STLD", "X", "CLF", "MT", "TX", "RS", "CMC", "GGB", "SID", "PKX", "TATASTEEL.NS", "JSWSTEEL.NS")),
   list(group="Commodities", label="Water (PHO)", ticker="PHO", holdings=c("XYL", "AWK", "WTS", "DHR", "ECL", "PNR", "AWR", "CWT", "SBS", "YORW")),
+  list(group="Commodities", label="Broad Commodities (DBC)", ticker="DBC", holdings=c("DBC", "GSG", "COMT", "DBB", "DBA")),
   
-  # --- 2. DEEP TECH & FUTURE ---
+  # --- 2. DEEP TECH ---
   list(group="Future Tech", label="Semiconductors (SMH)", ticker="SMH", holdings=c("NVDA", "TSM", "AVGO", "AMD", "INTC", "QCOM", "TXN", "MU", "AMAT", "LRCX", "ADI", "NXPI", "MCHP", "ON", "STM", "SWKS", "QRVO", "KLAC", "TER", "ENTG", "AMKR", "SNPS", "CDNS", "ARM", "MRVL", "WOLF", "LSCC", "MPWR", "RMBS", "DIOD", "SLAB")),
   list(group="Future Tech", label="AI & Robotics (BOTZ)", ticker="BOTZ", holdings=c("ISRG", "NVDA", "ABB", "6861.T", "6954.T", "PATH", "UPST", "AI", "TER", "IRBT", "KEY", "HUBS", "CRWD", "SNOW", "DDOG", "ZS", "NET", "PLTR", "SYM", "ROK", "CGNX", "PRO", "WK", "NVTS")),
   list(group="Future Tech", label="Cloud Computing (SKYY)", ticker="SKYY", holdings=c("ORCL", "MSFT", "GOOGL", "AMZN", "CRM", "ADBE", "INTU", "NOW", "SNOW", "PLTR", "DDOG", "NET", "MDB", "ZS", "CRWD", "PANW", "FTNT", "OKTA", "ZM", "DOCU", "TWLO", "BOX", "DBX", "SHOP", "SQ", "VEEV", "WDAY", "TEAM", "ADSK")),
@@ -72,7 +84,7 @@ THEME_DATABASE <- list(
   list(group="Future Tech", label="Space (ROKT)", ticker="ROKT", holdings=c("RKLB", "SPCE", "LMT", "NOC", "BA", "IRDM", "ASTS", "PL", "VSAT", "GSAT", "SID", "MAXR")),
   list(group="Future Tech", label="3D Printing (PRNT)", ticker="PRNT", holdings=c("SSYS", "DDD", "XONE", "PRLB", "MTLS", "DM", "VJET", "NNDM")),
   
-  # --- 3. ENERGY & GREEN REVOLUTION ---
+  # --- 3. ENERGY ---
   list(group="Energy", label="Oil & Gas E&P (XOP)", ticker="XOP", holdings=c("XOM", "CVX", "COP", "EOG", "OXY", "HES", "DVN", "PXD", "MRO", "FANG", "CTRA", "APA", "EQT", "VLO", "MPC", "PSX", "HAL", "SLB", "BKR", "WMB", "KMI", "OKE", "TRGP", "LNG", "CHK", "AR", "RRC")),
   list(group="Energy", label="Clean Energy (ICLN)", ticker="ICLN", holdings=c("PLUG", "ENPH", "FSLR", "ED", "CIG", "ORSTED.CO", "SEDG", "RUN", "NOVA", "BE", "FCEL", "SPWR", "CSIQ", "ARRY", "NXT", "SHLS", "TPIC", "NEP", "CWEN", "HASI")),
   list(group="Energy", label="Oil Services (OIH)", ticker="OIH", holdings=c("SLB", "HAL", "BKR", "NOV", "FTI", "CHX", "LB", "NEX", "OII", "PTEN", "RES", "WHD", "NBR", "HP")),
@@ -125,13 +137,9 @@ THEME_DATABASE <- list(
   list(group="Macro", label="Volatility (VXX)", ticker="VXX", holdings=c("VXX", "UVXY", "SVXY"))
 )
 
-# ==============================================================================
-# 3. MASTER DATA: COUNTRIES (EXHAUSTIVE ROSTERS)
-# ==============================================================================
-
 country_data <- list(
   # --- AMERICAS ---
-  "United States (SPY)" = list(etf="SPY", stocks=c("AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "BRK-B", "LLY", "JPM", "TSLA", "V", "XOM", "UNH", "MA", "PG", "JNJ", "HD", "MRK", "COST", "ABBV", "CVX", "CRM", "BAC", "WMT", "AMD", "NFLX", "KO", "PEP", "TMO", "LIN", "ADBE", "DIS", "MCD", "CSCO", "ABT", "TMUS", "INTC", "CMCSA", "PFE", "VZ", "NKE", "WFC", "INTU", "QCOM", "TXN", "DHR", "PM", "CAT", "IBM", "AMGN", "GE", "UNP")),
+  "United States (SPY)" = list(etf="SPY", stocks=c("AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "BRK-B", "LLY", "JPM", "TSLA", "V", "XOM", "UNH", "MA", "PG", "JNJ", "HD", "MRK", "COST", "ABBV")),
   "Canada (EWC)" = list(etf="EWC", stocks=c("RY", "TD", "SHOP", "ENB", "CNQ", "CP", "BMO", "TRI", "BNS", "TRP", "CNR", "ATD", "CSU", "POW", "FTS", "WCN", "AEM", "MFC", "IMO", "PPL", "BCE", "GIB-A", "MG", "TECK", "DOL", "SLF", "NA", "L", "WN", "EMA", "BAM", "BN", "TOU", "FM")),
   "Mexico (EWW)" = list(etf="EWW", stocks=c("AMX", "KOF", "CX", "FMX", "OMAB", "PAC", "ASR", "VLRS", "WALMEX.MX", "GMEXICOB.MX", "CEMEXCPO.MX", "GAPB.MX", "BIMBOA.MX", "GRUMAB.MX", "ALFAA.MX", "GFNORTEO.MX", "PE&OLES.MX", "KIMBERA.MX", "ORBIA.MX")),
   "Brazil (EWZ)" = list(etf="EWZ", stocks=c("PBR", "VALE", "ITUB", "BBD", "NU", "BSBR", "SUZ", "GGB", "ERJ", "SID", "ABEV", "JBSS3.SA", "WEGE3.SA", "RENT3.SA", "BBAS3.SA", "ITSA4.SA", "B3SA3.SA", "ELET3.SA", "LREN3.SA", "RAIL3.SA", "EQTL3.SA", "VIVT3.SA", "PRIO3.SA", "CSAN3.SA", "PETR3.SA", "PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBDC4.SA")),
@@ -156,7 +164,7 @@ country_data <- list(
   "Norway (NORW)" = list(etf="NORW", stocks=c("EQNR", "NHYDY", "YAR.OL", "MOWI.OL", "DNB.OL", "TEL.OL", "AKERBP.OL", "ORK.OL", "SUBC.OL", "SALM.OL", "GJF.OL", "TOM.OL")),
   "Finland (EFNL)" = list(etf="EFNL", stocks=c("NOK", "KNEBV.HE", "SAMPO.HE", "NDA-FI.HE", "UPM.HE", "WRT1V.HE", "FORTUM.HE", "NESTE.HE", "KCR.HE", "ELISA.HE", "METSO.HE", "VALMT.HE")),
   
-  # --- EUROPE: NICHE & FRONTIER ---
+  # --- EUROPE: NICHE ---
   "Ireland (EIRL)" = list(etf="EIRL", stocks=c("RYAAY", "CRH", "FLUT", "AIB", "BIRG.IR", "KRX.IR", "DCC.L", "KC.IR")),
   "Belgium (EWK)" = list(etf="EWK", stocks=c("BUD", "KBC.BR", "UCB.BR", "ABI.BR", "SOLB.BR", "ARGX.BR", "ACKB.BR", "GBLB.BR", "UMI.BR")),
   "Austria (EWO)" = list(etf="EWO", stocks=c("EBS.VI", "OMV.VI", "VER.VI", "VOE.VI", "RBI.VI", "ANDR.VI", "WIE.VI")),
@@ -165,7 +173,7 @@ country_data <- list(
   "Turkey (TUR)" = list(etf="TUR", stocks=c("THYAO.IS", "KCHOL.IS", "BIMAS.IS", "AKBNK.IS", "GARAN.IS", "TUPRS.IS", "SISE.IS", "EREGL.IS", "FROTO.IS", "YKBNK.IS", "ASELS.IS", "TCELL.IS", "PGSUS.IS", "SAHOL.IS", "ISCTR.IS")),
   "Baltics Proxy (via CEE)" = list(etf="CEE", stocks=c("PKO", "OTP", "CEZ")),
   
-  # --- ASIA GIANTS ---
+  # --- ASIA ---
   "India (EPI)" = list(etf="EPI", stocks=c("RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "HINDUNILVR.NS", "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS", "AXISBANK.NS", "BAJFINANCE.NS", "HCLTECH.NS", "ASIANPAINT.NS", "TITAN.NS", "MARUTI.NS", "ULTRACEMCO.NS", "SUNPHARMA.NS", "TATAMOTORS.NS", "WIPRO.NS", "ADANIENT.NS", "ONGC.NS", "NTPC.NS", "POWERGRID.NS", "JSWSTEEL.NS", "TATASTEEL.NS", "M&M.NS", "LTIM.NS", "ADANIPORTS.NS", "COALINDIA.NS", "SIEMENS.NS", "SBILIFE.NS", "BAJAJFINSV.NS", "GRASIM.NS", "TECHM.NS", "PIDILITIND.NS", "HINDALCO.NS", "INDUSINDBK.NS", "NESTLEIND.NS")),
   "China (FXI)" = list(etf="FXI", stocks=c("0700.HK", "9988.HK", "3690.HK", "0939.HK", "1299.HK", "0941.HK", "1398.HK", "0005.HK", "0883.HK", "9999.HK", "2318.HK", "0388.HK", "2015.HK", "1211.HK", "9618.HK", "1810.HK", "1024.HK", "9888.HK", "0992.HK", "1928.HK", "2269.HK", "2331.HK", "6690.HK", "1109.HK", "1177.HK", "2319.HK", "0669.HK", "1929.HK", "9866.HK", "9868.HK", "0762.HK")),
   "Japan (EWJ)" = list(etf="EWJ", stocks=c("7203.T", "6758.T", "8035.T", "6861.T", "9984.T", "9432.T", "6954.T", "8306.T", "6902.T", "7974.T", "8058.T", "8031.T", "8001.T", "4063.T", "4502.T", "7741.T", "9983.T", "6501.T", "6702.T", "6367.T", "4519.T", "4568.T", "6981.T", "3382.T", "8316.T", "6594.T", "6273.T", "9022.T", "9020.T", "7267.T", "8766.T", "8802.T", "4452.T", "2914.T", "5108.T")),
@@ -193,7 +201,6 @@ country_data <- list(
   "Africa Proxy (via AFK)" = list(etf="AFK", stocks=c("MTN", "Safaricom", "Attijariwafa"))
 )
 
-# --- D. GICS (STANDARD) ---
 gics_list <- list(
   "XLK" = c("MSFT", "AAPL", "NVDA", "AVGO", "ORCL", "CRM", "AMD", "ADBE", "QCOM", "CSCO", "INTU", "IBM", "AMAT", "NOW", "TXN", "LRCX", "MU", "ADI", "PANW", "SNPS", "KLAC", "CDNS", "ROP", "NXPI", "FTNT", "APH", "TEL", "TDY", "ANSS", "KEYS"),
   "XLC" = c("GOOGL", "META", "NFLX", "DIS", "CMCSA", "TMUS", "VZ", "T", "EA", "WBD", "CHTR", "TTWO", "OMC", "IPG", "LYV", "SIRI", "FOXA", "PARA"),
@@ -255,6 +262,14 @@ ui <- page_sidebar(
   
   sidebar = sidebar(
     title = "Market Controls",
+    
+    tooltip(
+      actionButton("refresh", "Refresh Data", class = "btn-primary w-100"),
+      "Click to reload data and calculate fresh metrics (RSI, Returns).",
+      placement = "right"
+    ),
+    
+    hr(),
     dateRangeInput("dates", "Chart Range:", start = Sys.Date() - 365, end = Sys.Date()),
     
     # --- SECTOR CONTROLS ---
@@ -291,20 +306,18 @@ ui <- page_sidebar(
                   choices = country_choices_grouped, selected = "India (EPI)")
     ),
     
-    hr(),
-    actionButton("refresh", "Refresh Data", class = "btn-primary w-100"),
     div(style="margin-top: 15px;", downloadButton("downloadData", "Export CSV", class = "btn-sm w-100"))
   ),
   
   navset_tab(
     id = "main_tabs",
-    nav_panel("Macro (GICS)", card(plotlyOutput("plotGICS", height = "500px") %>% withSpinner()), card(reactableOutput("tableGICS"))),
+    nav_panel("Macro (GICS)", card(card_header(tooltip(span("Relative Performance (Rebased)", bs_icon("info-circle")), "Compares cumulative returns starting from 0% at the beginning of the selected period.")), plotlyOutput("plotGICS", height = "500px") %>% withSpinner()), card(reactableOutput("tableGICS"))),
     nav_panel("Deep Dive (GICS)", card(uiOutput("boxesGICS")), reactableOutput("stockTableGICS") %>% withSpinner()),
     
-    nav_panel("Macro (Themes)", card(plotlyOutput("plotThemes", height = "500px") %>% withSpinner()), card(reactableOutput("tableThemes"))),
+    nav_panel("Macro (Themes)", card(card_header(tooltip(span("Thematic Performance", bs_icon("graph-up")), "Performance of selected thematic ETFs relative to SPY.")), plotlyOutput("plotThemes", height = "500px") %>% withSpinner()), card(reactableOutput("tableThemes"))),
     nav_panel("Deep Dive (Themes)", card(uiOutput("boxesThemes")), reactableOutput("stockTableThemes") %>% withSpinner()),
     
-    nav_panel("Macro (Countries)", card(plotlyOutput("plotCountries", height = "500px") %>% withSpinner()), card(reactableOutput("tableCountries"))),
+    nav_panel("Macro (Countries)", card(card_header(tooltip(span("Global Performance", bs_icon("globe")), "Country ETF performance in USD terms.")), plotlyOutput("plotCountries", height = "500px") %>% withSpinner()), card(reactableOutput("tableCountries"))),
     nav_panel("Deep Dive (Countries)", card(uiOutput("boxesCountries")), reactableOutput("stockTableCountries") %>% withSpinner())
   )
 )
@@ -315,82 +328,82 @@ ui <- page_sidebar(
 
 server <- function(input, output, session) {
   
-  # --- SAFE DATA FETCHING ---
+  # --- SAFE DATA FETCHING (Permissive Mode + Date Grid) ---
   safe_get_data <- function(tickers, from_date) {
     if(is.null(tickers) || length(tickers) == 0) return(NULL)
+    
     tryCatch({
-      # get="stock.prices" gets OHLCV data directly
-      df <- tq_get(tickers, from = from_date, get = "stock.prices")
-      if (is.null(df) || nrow(df) == 0) return(NULL)
+      # 1. Fetch raw data (Allow partial failures)
+      raw_df <- memo_tq_get(tickers, from = from_date, get = "stock.prices", complete_cases = FALSE)
+      if (is.null(raw_df) || nrow(raw_df) == 0) return(NULL)
+      raw_df <- raw_df %>% filter(!is.na(adjusted))
       
-      # Fill Missing Dates (LOCF) for International Stocks
-      # This fixes the "NA returns" issue for holidays
-      df <- df %>%
+      # 2. MASTER DATE GRID (Fixes "Not Filled" & "Visual Alignment")
+      # This ensures every ticker has a row for every weekday, filling holidays with previous price.
+      dates <- unique(raw_df$date)
+      if(length(dates) == 0) return(NULL)
+      
+      full_grid <- expand.grid(date = seq(min(dates), max(dates), by="day"), 
+                               symbol = unique(raw_df$symbol))
+      
+      aligned_df <- full_grid %>%
+        left_join(raw_df, by = c("date", "symbol")) %>%
         group_by(symbol) %>%
-        complete(date = seq.Date(min(date), max(date), by="day")) %>%
-        fill(c(open, high, low, close, volume, adjusted), .direction = "down") %>%
-        na.omit() %>%
-        ungroup()
+        arrange(date) %>%
+        fill(adjusted, .direction = "down") %>% # Fill holidays with prev price
+        fill(adjusted, .direction = "up") %>%   # Fill start if needed
+        ungroup() %>%
+        filter(!is.na(adjusted))
       
-      return(df)
+      return(aligned_df)
     }, error = function(e) { return(NULL) })
   }
   
-  # --- STOCK METRICS ENGINE (FIXED) ---
+  # --- STOCK METRICS ENGINE (Bulletproofed) ---
   fetch_stock_data <- function(tickers) {
     req(tickers)
-    # Fetch 400 days to ensure enough history for RSI and 1Y return
     df_raw <- safe_get_data(tickers, Sys.Date() - 400) 
     if (is.null(df_raw)) return(NULL)
     
-    # Helper to get return from X days ago (closest available date)
-    calc_ret <- function(curr, vec_price, vec_date, days_ago) {
-      target_date <- Sys.Date() - days_ago
-      # Find index of date closest to target but <= target
-      idx <- which(vec_date <= target_date)
-      if(length(idx) == 0) return(NA)
-      old_price <- vec_price[max(idx)]
-      if(is.na(old_price) || old_price == 0) return(NA)
-      return((curr / old_price) - 1)
-    }
-    
-    # 1. Calculate Metrics entirely from historical data (bypasses getQuote issues for Intl stocks)
     metrics <- df_raw %>%
       group_by(symbol) %>%
       arrange(date) %>%
       summarise(
         Price = last(adjusted),
-        # Pass vector columns to helper
-        `1M` = calc_ret(last(adjusted), adjusted, date, 30),
-        `3M` = calc_ret(last(adjusted), adjusted, date, 90),
-        `6M` = calc_ret(last(adjusted), adjusted, date, 180),
-        `1Y` = calc_ret(last(adjusted), adjusted, date, 365),
+        `1M` = (last(adjusted) / last(lag(adjusted, 21)) - 1),
+        `3M` = (last(adjusted) / last(lag(adjusted, 63)) - 1),
+        `6M` = (last(adjusted) / last(lag(adjusted, 126)) - 1),
+        `1Y` = (last(adjusted) / last(lag(adjusted, 252)) - 1),
         Vol = tryCatch(sd(diff(log(adjusted)), na.rm=TRUE)*sqrt(252), error=function(e) NA),
         RSI = tryCatch(last(RSI(adjusted, n=14)), error=function(e) NA),
         .groups = "drop"
       )
     
-    # 2. Try to get Names/MarketCap separately, but don't fail if it crashes
+    valid_symbols <- unique(metrics$symbol)
+    
+    # FAIL-SAFE METADATA FETCH
     info_df <- tryCatch({
-      # Attempt to get quotes for names only
-      q <- getQuote(tickers, what = yahooQF(c("Market Capitalization", "Name")))
+      # Try fetching Names/MCap
+      q <- getQuote(valid_symbols, what = yahooQF(c("Market Capitalization", "Name")))
       data.frame(symbol = rownames(q), mcap_raw = q$`Market Capitalization`, name = q$Name)
     }, error = function(e) {
-      # Fallback if getQuote fails entirely
-      data.frame(symbol = tickers, mcap_raw = 0, name = tickers)
+      # If getQuote crashes (common for India), return dummy data instead of failing
+      data.frame(symbol = valid_symbols, mcap_raw = 0, name = valid_symbols)
     })
     
-    # Merge and Clean
+    # Merge and Cleanup
     final <- metrics %>%
       left_join(info_df, by="symbol") %>%
       rowwise() %>%
-      mutate(Mcap = clean_mcap(mcap_raw), Cur = get_currency_symbol(symbol)) %>%
+      mutate(
+        Mcap = clean_mcap(mcap_raw), 
+        Cur = get_currency_symbol(symbol),
+        # Final fallback: If name is NA/Empty, use Ticker
+        name = ifelse(is.na(name) | name == "", symbol, name) 
+      ) %>%
       ungroup() %>%
       arrange(desc(Mcap)) %>%
       select(name, symbol, Mcap, Price, `1M`, `3M`, `6M`, `1Y`, Vol, RSI, Cur)
-    
-    # Handle NA names (fill with ticker if missing)
-    final$name <- ifelse(is.na(final$name) | final$name == "", final$symbol, final$name)
     
     colnames(final)[1] <- "Name"
     colnames(final)[2] <- "Ticker"
@@ -405,11 +418,12 @@ server <- function(input, output, session) {
                           text = paste0("<b>", label, "</b>\nReturn: ", percent(cum_ret, 0.1)))) + 
       geom_line(linewidth = 1) + 
       scale_y_continuous(labels=percent) + 
-      labs(x = "", y = "Return") + theme_minimal()
+      labs(x = "", y = "Return", color = NULL) + # Removed legend title for cleaner look
+      theme_minimal()
     ggplotly(p, tooltip = "text")
   }
   
-  # --- TABLE RENDERERS ---
+  # --- TABLE RENDERERS (CLEANED - NO HTML IN HEADERS) ---
   render_macro_table <- function(df, group_name) {
     req(df)
     summary_df <- df %>% 
@@ -420,11 +434,13 @@ server <- function(input, output, session) {
     colnames(summary_df)[1] <- group_name
     
     reactable(summary_df, columns = list(
-      Return = colDef(format = colFormat(percent = TRUE, digits = 1), 
-                      style = function(value) {
-                        color <- if (value > 0) "#008000" else "#e00000"
-                        list(color = color, fontWeight = "bold")
-                      })
+      Return = colDef(
+        name = "Return", # PLAIN TEXT TO AVOID ERROR
+        format = colFormat(percent = TRUE, digits = 1), 
+        style = function(value) {
+          color <- if (value > 0) "#008000" else "#e00000"
+          list(color = color, fontWeight = "bold")
+        })
     ), striped = TRUE, compact = TRUE)
   }
   
@@ -432,36 +448,82 @@ server <- function(input, output, session) {
     req(df)
     display_df <- df %>% select(-Cur)
     
+    # FORCE RENAME: R often renames "1M" to "X1M". We revert this so reactable sees what it expects.
+    names(display_df)[names(display_df) == "X1M"] <- "1M"
+    names(display_df)[names(display_df) == "X3M"] <- "3M"
+    names(display_df)[names(display_df) == "X6M"] <- "6M"
+    names(display_df)[names(display_df) == "X1Y"] <- "1Y"
+    
     reactable(display_df, columns = list(
-      Name = colDef(minWidth = 140, style = list(fontWeight = "bold")),
+      Name = colDef(
+        minWidth = 140, 
+        style = list(fontWeight = "bold"),
+        cell = function(value, index) {
+          ticker <- display_df$Ticker[index]
+          url <- paste0("https://finance.yahoo.com/quote/", ticker)
+          htmltools::tags$a(
+            href = url, target = "_blank", 
+            style = "text-decoration: none; color: #2c3e50; border-bottom: 1px dotted #2c3e50;",
+            title = "View on Yahoo Finance", value
+          )
+        }
+      ),
       Ticker = colDef(maxWidth = 90),
-      Mcap = colDef(cell = function(v) {
-        if(is.na(v)) return("-")
-        if(v >= 1e12) paste0(round(v/1e12,1), "T") else if(v >= 1e9) paste0(round(v/1e9,1), "B") else "-"
-      }),
-      `1M` = colDef(format=colFormat(percent=TRUE, digits=1), style=function(v) list(color=if(is.na(v)) "black" else if(v>0)"green" else "red")),
-      `3M` = colDef(format=colFormat(percent=TRUE, digits=1), style=function(v) list(color=if(is.na(v)) "black" else if(v>0)"green" else "red")),
-      `6M` = colDef(format=colFormat(percent=TRUE, digits=1), style=function(v) list(color=if(is.na(v)) "black" else if(v>0)"green" else "red")),
-      `1Y` = colDef(format=colFormat(percent=TRUE, digits=1), style=function(v) list(color=if(is.na(v)) "black" else if(v>0)"green" else "red")),
-      Price = colDef(cell=function(v,i) paste0(df$Cur[i], round(v,2))),
-      Vol = colDef(format = colFormat(percent = TRUE, digits = 1)),
-      RSI = colDef(format = colFormat(digits = 2))
+      Mcap = colDef(
+        name = "Mcap", # PLAIN TEXT
+        cell = function(v) {
+          if(is.na(v) || v == 0) return("-")
+          if(v >= 1e12) paste0(round(v/1e12,1), "T") else if(v >= 1e9) paste0(round(v/1e9,1), "B") else "-"
+        }),
+      `1M` = colDef(
+        name = "1M", # PLAIN TEXT
+        format=colFormat(percent=TRUE, digits=1), style=function(v) list(color=if(is.na(v)) "black" else if(v>0)"green" else "red")
+      ),
+      `3M` = colDef(
+        name = "3M",
+        format=colFormat(percent=TRUE, digits=1), style=function(v) list(color=if(is.na(v)) "black" else if(v>0)"green" else "red")
+      ),
+      `6M` = colDef(
+        name = "6M",
+        format=colFormat(percent=TRUE, digits=1), style=function(v) list(color=if(is.na(v)) "black" else if(v>0)"green" else "red")
+      ),
+      `1Y` = colDef(
+        name = "1Y",
+        format=colFormat(percent=TRUE, digits=1), style=function(v) list(color=if(is.na(v)) "black" else if(v>0)"green" else "red")
+      ),
+      Price = colDef(
+        name = "Price",
+        cell=function(v,i) paste0(df$Cur[i], round(v,2))
+      ),
+      Vol = colDef(
+        name = "Vol",
+        format = colFormat(percent = TRUE, digits = 1)
+      ),
+      RSI = colDef(
+        name = "RSI",
+        format = colFormat(digits = 2)
+      )
     ), compact=TRUE, striped=TRUE, pagination = TRUE, defaultPageSize = 25)
   }
   
   make_value_boxes <- function(df) {
     req(df); if (nrow(df) == 0) return(NULL)
-    df_clean <- df %>% filter(!is.na(`1M`))
+    
+    # Handle both column name possibilities safely
+    col_1m <- if("1M" %in% names(df)) df$`1M` else if("X1M" %in% names(df)) df$X1M else NULL
+    if(is.null(col_1m)) return(NULL)
+    
+    df_clean <- df %>% mutate(Ret1M = col_1m) %>% filter(!is.na(Ret1M))
     if(nrow(df_clean) == 0) return(NULL)
     
-    winner <- df_clean %>% arrange(desc(`1M`)) %>% head(1)
-    laggard <- df_clean %>% arrange(`1M`) %>% head(1)
-    avg_ret <- mean(df_clean$`1M`, na.rm=TRUE)
+    winner <- df_clean %>% arrange(desc(Ret1M)) %>% head(1)
+    laggard <- df_clean %>% arrange(Ret1M) %>% head(1)
+    avg_ret <- mean(df_clean$Ret1M, na.rm=TRUE)
     
     layout_columns(
-      value_box(title = "Top Performer (1M)", value = paste0(winner$Name, ": ", percent(winner$`1M`, 0.1)), theme = "success"),
-      value_box(title = "Lagging (1M)", value = paste0(laggard$Name, ": ", percent(laggard$`1M`, 0.1)), theme = "danger"),
-      value_box(title = "Average (1M)", value = percent(avg_ret, 0.1), theme = "primary")
+      value_box(title = "Top Performer (1M)", value = paste0(winner$Name, ": ", percent(winner$Ret1M, 0.1)), theme = "success", showcase = bs_icon("graph-up-arrow")),
+      value_box(title = "Lagging (1M)", value = paste0(laggard$Name, ": ", percent(laggard$Ret1M, 0.1)), theme = "danger", showcase = bs_icon("graph-down-arrow")),
+      value_box(title = "Average (1M)", value = percent(avg_ret, 0.1), theme = "primary", showcase = bs_icon("pie-chart"))
     )
   }
   
@@ -470,17 +532,21 @@ server <- function(input, output, session) {
   # 1. THEMES
   data_theme_macro <- eventReactive(input$refresh, {
     labels <- c(input$theme_visible, "S&P 500 (SPY)")
-    ticker_map <- setNames(sapply(labels, function(x) {
+    
+    # FIXED: Use unlist() to ensure ticker_map is a clean named vector, 
+    # preventing graph misalignment issues.
+    ticker_map <- unlist(sapply(labels, function(x) {
       if(x == "S&P 500 (SPY)") return("SPY")
       get_ticker_from_label(x)
-    }), labels)
-    ticker_map <- ticker_map[!sapply(ticker_map, is.null)]
+    }, simplify = FALSE))
+    
     valid_tickers <- unname(ticker_map)
     
     df <- safe_get_data(valid_tickers, input$dates[1])
     if(is.null(df)) return(NULL)
     
     df %>% 
+      arrange(date) %>% 
       group_by(symbol) %>% 
       mutate(cum_ret = (adjusted/first(adjusted))-1, 
              label = names(ticker_map)[match(symbol, ticker_map)])
@@ -501,11 +567,11 @@ server <- function(input, output, session) {
   data_gics <- eventReactive(input$refresh, {
     req(input$gics_visible)
     selected_sectors <- input$gics_visible
-    # Ensure tickers exist
     df <- safe_get_data(c(selected_sectors, "SPY"), input$dates[1])
     if(is.null(df)) return(NULL)
     
     df %>%
+      arrange(date) %>% 
       group_by(symbol) %>% 
       mutate(cum_ret=(adjusted/first(adjusted))-1, label=gics_map[symbol])
   }, ignoreNULL=FALSE)
@@ -523,8 +589,6 @@ server <- function(input, output, session) {
   # 3. COUNTRIES
   data_country <- eventReactive(input$refresh, {
     req(input$country_visible)
-    
-    # Map selection name to ticker safely
     tix <- sapply(input$country_visible, function(x) {
       if(is.null(country_data[[x]])) return(NA)
       country_data[[x]]$etf
@@ -536,6 +600,7 @@ server <- function(input, output, session) {
     if(is.null(df)) return(NULL)
     
     df %>% 
+      arrange(date) %>% 
       group_by(symbol) %>% 
       mutate(cum_ret=(adjusted/first(adjusted))-1, label=names(tix)[match(symbol, tix)])
   }, ignoreNULL=FALSE)
@@ -555,10 +620,10 @@ server <- function(input, output, session) {
   output$downloadData <- downloadHandler(
     filename = function() { paste("market-data-", Sys.Date(), ".csv", sep="") },
     content = function(file) { 
-      # Default to saving whatever deep dive is active
       write.csv(data_country_deep(), file) 
     }
   )
 }
 
 shinyApp(ui, server)
+
