@@ -255,6 +255,8 @@ get_holdings_from_label <- function(lbl) {
 # 4. UI
 # ==============================================================================
 
+tags$head(tags$link(rel = "icon", type = "image/svg+xml", href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='1' y='1' width='30' height='30' rx='6' fill='rgb(26,26,26)' stroke='rgb(0,212,170)' stroke-width='2.5'/><text x='16' y='23' text-anchor='middle' fill='rgb(0,212,170)' font-size='17' font-weight='bold' font-family='-apple-system,sans-serif'>M</text></svg>"))
+
 ui <- page_sidebar(
   title = "Sector Momentum Tracker",
   theme = bs_theme(version = 5, bootswatch = "zephyr", primary = "#2c3e50"),
