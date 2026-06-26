@@ -255,7 +255,7 @@ get_holdings_from_label <- function(lbl) {
 # 4. UI
 # ==============================================================================
 
-tags$head(tags$link(rel = "icon", type = "image/svg+xml", href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='1' y='1' width='30' height='30' rx='6' fill='rgb(26,26,26)' stroke='rgb(0,212,170)' stroke-width='2.5'/><text x='16' y='23' text-anchor='middle' fill='rgb(0,212,170)' font-size='17' font-weight='bold' font-family='-apple-system,sans-serif'>M</text></svg>"))
+tags$head(tags$link(rel = "icon", type = "image/svg+xml", href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='1' y='1' width='30' height='30' rx='6' fill='rgb(26,26,26)' stroke='rgb(249,115,22)' stroke-width='2'/><g transform='translate(4,4)' fill='none' stroke='rgb(249,115,22)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2'/></g></svg>"))
 
 ui <- page_sidebar(
   title = "Sector Momentum Tracker",
